@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from 'react-leaflet';
+import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap, Tooltip, Circle } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import useObservationStore from '../store/useObservationStore';
 import useMissionStore from '../store/useMissionStore';
@@ -52,6 +53,31 @@ function createCustomIcon(color) {
     });
 }
 
+function createClusterIcon(cluster) {
+    const count = cluster.getChildCount();
+    const size = count < 10 ? 36 : count < 50 ? 44 : 52;
+    return L.divIcon({
+        html: `<div style="
+            width: ${size}px;
+            height: ${size}px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 242, 255, 0.15);
+            border: 2px solid rgba(0, 242, 255, 0.5);
+            border-radius: 50%;
+            color: #00F2FF;
+            font-weight: 700;
+            font-size: ${count < 10 ? 12 : 14}px;
+            font-family: var(--font-geist-mono, monospace);
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+            backdrop-filter: blur(8px);
+        ">${count}</div>`,
+        className: 'marker-cluster-custom',
+        iconSize: L.point(size, size, true),
+    });
+}
+
 function FlyToNewObservation() {
     const map = useMap();
     const observations = useObservationStore((s) => s.observations);
@@ -60,12 +86,25 @@ function FlyToNewObservation() {
     useEffect(() => {
         if (observations.length > prevCountRef.current && observations.length > 0) {
             const latest = observations[0];
-            map.flyTo([latest.latitude, latest.longitude], 15, {
-                duration: 2,
-            });
+            map.flyTo([latest.latitude, latest.longitude], 15, { duration: 2 });
         }
         prevCountRef.current = observations.length;
     }, [observations, map]);
+
+    return null;
+}
+
+function FlyToTarget({ flyTarget }) {
+    const map = useMap();
+    const prevTarget = useRef(null);
+
+    useEffect(() => {
+        if (!flyTarget) return;
+        const key = `${flyTarget.lat}-${flyTarget.lng}`;
+        if (prevTarget.current === key) return;
+        prevTarget.current = key;
+        map.flyTo([flyTarget.lat, flyTarget.lng], flyTarget.zoom || 13, { duration: 2 });
+    }, [flyTarget, map]);
 
     return null;
 }
@@ -80,7 +119,7 @@ function formatTime(timestamp) {
     return date.toLocaleDateString();
 }
 
-export default function MapComponent({ missions = [], userLocation, children }) {
+export default function MapComponent({ missions = [], userLocation, flyTarget, children }) {
     const observations = useObservationStore((s) => s.observations);
     const { isInZone, activeMission: geofenceMission } = useGeofence(missions, userLocation);
     const activeMission = useMissionStore((s) => s.activeMission);
@@ -91,12 +130,13 @@ export default function MapComponent({ missions = [], userLocation, children }) 
         const isGeoActive = geofenceMission && geofenceMission.id === mission.id;
 
         if (isActive) {
-            return { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.4, weight: 4 };
+            return { color: '#00F2FF', fillColor: '#00F2FF', fillOpacity: 0.25, weight: 3, dashArray: '8 4' };
         }
         if (isGeoActive) {
-            return { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.3, weight: 3 };
+            return { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 3 };
         }
-        return { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.2, weight: 2 };
+        // Default: Crimson
+        return { color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.15, weight: 2 };
     };
 
     return (
@@ -109,19 +149,35 @@ export default function MapComponent({ missions = [], userLocation, children }) 
             >
                 <TileLayer
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                    attribution='Tiles &copy; Esri'
                     maxZoom={18}
                 />
 
                 <FlyToNewObservation />
+                <FlyToTarget flyTarget={flyTarget} />
                 {children}
 
-                {/* Render Mission Polygons */}
+                {/* Search location marker */}
+                {flyTarget && (
+                    <Circle
+                        center={[flyTarget.lat, flyTarget.lng]}
+                        radius={200}
+                        pathOptions={{
+                            color: '#00F2FF',
+                            fillColor: '#00F2FF',
+                            fillOpacity: 0.15,
+                            weight: 2,
+                            dashArray: '6 4',
+                        }}
+                    />
+                )}
+
+                {/* Mission Polygons */}
                 {missions.map((mission) => {
                     if (!mission.geometry || !mission.geometry.coordinates) return null;
-
                     const positions = mission.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
                     const colors = getMissionColor(mission);
+                    const isHighPriority = mission.bountyPoints >= 50;
 
                     return (
                         <Polygon
@@ -134,24 +190,43 @@ export default function MapComponent({ missions = [], userLocation, children }) 
                                     setActiveMission(mission);
                                 },
                             }}
+                            className={isHighPriority ? 'mission-pulse' : ''}
                         >
+                            <Tooltip
+                                direction="top"
+                                offset={[0, -10]}
+                                className="mission-tooltip"
+                            >
+                                <div style={{
+                                    background: 'rgba(11,14,20,0.95)',
+                                    backdropFilter: 'blur(12px)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius: '10px',
+                                    padding: '10px 14px',
+                                    minWidth: '160px',
+                                }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
+                                        {mission.title}
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>
+                                        🎯 {mission.bountyPoints} pts · {mission.userMissions?.length || 0} joined
+                                    </div>
+                                </div>
+                            </Tooltip>
                             <Popup>
-                                <div className="min-w-[200px] rounded-xl bg-gray-900/95 p-3">
+                                <div className="min-w-[200px] rounded-xl p-3" style={{ background: 'rgba(11,14,20,0.95)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)' }}>
                                     <h4 className="mb-2 text-sm font-bold text-white">{mission.title}</h4>
                                     {mission.description && (
-                                        <p className="mb-2 text-xs text-white/70">{mission.description}</p>
+                                        <p className="mb-2 text-xs text-white/60">{mission.description}</p>
                                     )}
                                     <div className="mb-2 flex items-center gap-2 text-xs">
-                                        <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-yellow-400">
+                                        <span className="rounded-full bg-[#00F2FF]/15 px-2 py-0.5 text-[#00F2FF] font-semibold">
                                             🎯 {mission.bountyPoints} pts
                                         </span>
                                     </div>
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveMission(mission);
-                                        }}
-                                        className="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-3 py-1.5 text-xs font-bold text-white"
+                                        onClick={(e) => { e.stopPropagation(); setActiveMission(mission); }}
+                                        className="btn-glow w-full rounded-lg bg-gradient-to-r from-[#00F2FF] to-[#3b82f6] px-3 py-1.5 text-xs font-bold text-white"
                                     >
                                         View Details →
                                     </button>
@@ -161,119 +236,139 @@ export default function MapComponent({ missions = [], userLocation, children }) 
                     );
                 })}
 
-                {/* Render Observation Markers */}
-                {observations.map((obs) => (
-                    <Marker
-                        key={obs.id}
-                        position={[obs.latitude, obs.longitude]}
-                        icon={createCustomIcon(CATEGORY_COLORS[obs.category] || '#94a3b8')}
-                    >
-                        <Popup className="custom-popup">
-                            <div className="min-w-[240px] rounded-xl bg-gray-900/95 p-4 backdrop-blur-md border border-cyan-500/20">
-                                <div className="mb-2 flex items-center justify-between">
-                                    <span
-                                        className="rounded-full px-2 py-0.5 text-xs font-bold text-white"
-                                        style={{
-                                            backgroundColor: CATEGORY_COLORS[obs.category] || '#94a3b8',
-                                        }}
-                                    >
-                                        {obs.category}
-                                    </span>
-                                    <span className="text-xs text-cyan-300/70">
-                                        {formatTime(obs.createdAt)}
-                                    </span>
+                {/* Clustered Observation Markers */}
+                <MarkerClusterGroup
+                    chunkedLoading
+                    iconCreateFunction={createClusterIcon}
+                    maxClusterRadius={60}
+                    spiderfyOnMaxZoom={true}
+                    showCoverageOnHover={false}
+                >
+                    {observations.map((obs) => (
+                        <Marker
+                            key={obs.id}
+                            position={[obs.latitude, obs.longitude]}
+                            icon={createCustomIcon(CATEGORY_COLORS[obs.category] || '#94a3b8')}
+                        >
+                            <Tooltip direction="top" offset={[0, -15]}>
+                                <div style={{
+                                    background: 'rgba(11,14,20,0.95)',
+                                    backdropFilter: 'blur(12px)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius: '8px',
+                                    padding: '6px 10px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '10px',
+                                    color: 'rgba(255,255,255,0.7)',
+                                }}>
+                                    📍 {obs.latitude.toFixed(4)}, {obs.longitude.toFixed(4)}
                                 </div>
-
-                                {obs.imageUrl && (
-                                    <div className="mb-2 overflow-hidden rounded-lg">
-                                        <img
-                                            src={obs.imageUrl}
-                                            alt={obs.category}
-                                            className="h-32 w-full object-cover"
-                                        />
+                            </Tooltip>
+                            <Popup className="custom-popup">
+                                <div className="min-w-[240px] rounded-xl p-4" style={{ background: 'rgba(11,14,20,0.95)', backdropFilter: 'blur(16px)', border: '1px solid rgba(0,242,255,0.15)' }}>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <span
+                                            className="rounded-full px-2 py-0.5 text-xs font-bold text-white"
+                                            style={{ backgroundColor: CATEGORY_COLORS[obs.category] || '#94a3b8' }}
+                                        >
+                                            {obs.category}
+                                        </span>
+                                        <span className="text-xs text-[#00F2FF]/60 font-mono">{formatTime(obs.createdAt)}</span>
                                     </div>
-                                )}
 
-                                {obs.aiLabel && (
-                                    <div className="mb-2 flex items-center gap-1 text-xs">
-                                        <span className="text-purple-400">AI:</span>
-                                        <span className="text-white/80">{obs.aiLabel}</span>
-                                        {obs.confidenceScore && (
-                                            <span className="text-cyan-400">
-                                                ({(obs.confidenceScore * 100).toFixed(0)}%)
-                                            </span>
-                                        )}
+                                    {obs.imageUrl && (
+                                        <div className="mb-2 overflow-hidden rounded-lg">
+                                            <img src={obs.imageUrl} alt={obs.category} className="h-32 w-full object-cover" />
+                                        </div>
+                                    )}
+
+                                    {obs.aiLabel && (
+                                        <div className="mb-2 flex items-center gap-1 text-xs">
+                                            <span className="text-[#9D50FF] font-semibold">AI:</span>
+                                            <span className="text-white/80">{obs.aiLabel}</span>
+                                            {obs.confidenceScore && (
+                                                <span className="text-[#00F2FF] font-mono">
+                                                    ({(obs.confidenceScore * 100).toFixed(0)}%)
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {obs.notes && <p className="mb-1 text-xs text-white/60">{obs.notes}</p>}
+
+                                    <div className="flex items-center gap-1 text-xs text-white/40 font-mono">
+                                        <span>📍 {obs.latitude.toFixed(4)}, {obs.longitude.toFixed(4)}</span>
                                     </div>
-                                )}
-
-                                {obs.notes && (
-                                    <p className="mb-1 text-xs text-white/70">{obs.notes}</p>
-                                )}
-
-                                <div className="flex items-center gap-1 text-xs text-white/50">
-                                    <span>📍</span>
-                                    <span>
-                                        {obs.latitude.toFixed(4)}, {obs.longitude.toFixed(4)}
-                                    </span>
+                                    <div className="mt-1 text-xs text-[#00F2FF]/40">by {obs.userName}</div>
                                 </div>
-                                <div className="mt-1 text-xs text-cyan-300/50">
-                                    by {obs.userName}
-                                </div>
-                            </div>
-                        </Popup>
-                    </Marker>
-                ))}
+                            </Popup>
+                        </Marker>
+                    ))}
+                </MarkerClusterGroup>
             </MapContainer>
 
+            {/* Legend */}
             <div className="absolute bottom-4 left-4 z-[1000] flex flex-wrap gap-2">
                 {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
                     <div
                         key={cat}
-                        className="flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-xs backdrop-blur-sm border border-white/10"
+                        className="glass-surface flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
                     >
-                        <div
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: color }}
-                        />
-                        <span className="text-white/70">{cat}</span>
+                        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80` }} />
+                        <span className="text-white/60">{cat}</span>
                     </div>
                 ))}
             </div>
 
             {isInZone && geofenceMission && (
-                <div className="absolute top-4 left-1/2 z-[1000] -translate-x-1/2 animate-pulse rounded-full bg-green-500/90 px-4 py-2 text-sm font-bold text-white shadow-lg">
-                    🎯 You're in the Mission Zone!
+                <div
+                    className="absolute top-4 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-emerald-500/90 px-4 py-2 text-sm font-bold text-white shadow-lg"
+                    style={{ animation: 'pulseGlow 3s ease-in-out infinite' }}
+                >
+                    🎯 You&rsquo;re in the Mission Zone!
                 </div>
             )}
 
             <style jsx global>{`
-        @keyframes ping {
-          75%, 100% {
-            transform: scale(2);
-            opacity: 0;
-          }
-        }
-        .leaflet-popup-content-wrapper {
-          background: transparent !important;
-          box-shadow: none !important;
-          padding: 0 !important;
-        }
-        .leaflet-popup-tip {
-          background: rgba(17, 24, 39, 0.95) !important;
-        }
-        .leaflet-popup-close-button {
-          color: #22d3ee !important;
-          font-size: 20px !important;
-          font-weight: bold !important;
-          padding: 4px 8px !important;
-        }
-        .leaflet-popup-close-button:hover {
-          color: #06b6d4 !important;
-        }
-        .leaflet-container {
-          background: #0a0a0a !important;
-        }
-      `}</style>
+                @keyframes ping {
+                    75%, 100% { transform: scale(2); opacity: 0; }
+                }
+                .leaflet-popup-content-wrapper {
+                    background: transparent !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .leaflet-popup-tip {
+                    background: rgba(11, 14, 20, 0.95) !important;
+                }
+                .leaflet-popup-close-button {
+                    color: #00F2FF !important;
+                    font-size: 20px !important;
+                    font-weight: bold !important;
+                    padding: 4px 8px !important;
+                }
+                .leaflet-popup-close-button:hover {
+                    color: #9D50FF !important;
+                }
+                .leaflet-container {
+                    background: #0B0E14 !important;
+                }
+                .leaflet-tooltip {
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .leaflet-tooltip::before {
+                    display: none !important;
+                }
+                .marker-cluster-custom {
+                    background: transparent !important;
+                }
+                .mission-pulse {
+                    animation: missionPulse 3s ease-in-out infinite;
+                }
+            `}</style>
         </div>
     );
 }

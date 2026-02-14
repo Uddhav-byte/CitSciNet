@@ -36,7 +36,7 @@ function AnimatedCounter({ end, label, icon: Icon, delay }) {
       className="flex flex-col items-center gap-2"
       style={{ animation: `counterFadeIn 0.6s ease ${delay}ms both` }}
     >
-      <Icon className="h-5 w-5 text-cyan-400" />
+      <Icon className="h-5 w-5 text-[#00F2FF]" />
       <span className="text-3xl font-bold text-white">{count.toLocaleString()}+</span>
       <span className="text-xs uppercase tracking-widest text-white/40">{label}</span>
     </div>
@@ -73,7 +73,7 @@ export default function HomePage() {
   if (user) return null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#050510]">
+    <div className="relative min-h-screen overflow-hidden bg-[#0B0E14]">
       {/* Background orbs */}
       <FloatingOrb size="600px" color="#22d3ee" top="-200px" left="-100px" delay={0} />
       <FloatingOrb size="500px" color="#a855f7" top="50%" left="70%" delay={2} />
@@ -91,12 +91,12 @@ export default function HomePage() {
       {/* Top nav */}
       <nav className="relative z-10 flex items-center justify-between px-8 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/25">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-[0_0_15px_rgba(0,242,255,0.3)]">
             <Globe className="h-5 w-5 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white">
-              CitSci<span className="text-cyan-400">Net</span>
+              CitSci<span className="text-[#00F2FF]">Net</span>
             </h1>
             <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/30">
               Citizen Science Network
@@ -113,7 +113,7 @@ export default function HomePage() {
           </Link>
           <Link
             href="/signup"
-            className="rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-cyan-500/25 transition-all hover:shadow-cyan-500/40 hover:brightness-110"
+            className="rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-[0_0_15px_rgba(0,242,255,0.3)] transition-all hover:shadow-[0_0_25px_rgba(0,242,255,0.5)] hover:brightness-110"
           >
             Get Started
           </Link>
@@ -122,7 +122,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pt-20 pb-16 text-center">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5 text-xs font-medium text-cyan-400 backdrop-blur-sm">
+        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5 text-xs font-medium text-[#00F2FF] backdrop-blur-sm">
           <Zap className="h-3.5 w-3.5" />
           <span>Real-time AI-Powered Observations</span>
         </div>
@@ -154,7 +154,7 @@ export default function HomePage() {
         >
           <Link
             href="/signup"
-            className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-8 py-3.5 text-base font-bold text-white shadow-xl shadow-cyan-500/25 transition-all duration-300 hover:shadow-cyan-500/40 hover:brightness-110"
+            className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-8 py-3.5 text-base font-bold text-white shadow-xl shadow-[0_0_15px_rgba(0,242,255,0.3)] transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,242,255,0.5)] hover:brightness-110"
           >
             Get Started
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

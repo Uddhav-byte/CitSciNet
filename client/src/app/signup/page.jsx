@@ -70,7 +70,7 @@ export default function SignupPage() {
     ];
 
     return (
-        <div className="relative flex min-h-screen items-center justify-center bg-[#050510] px-4">
+        <div className="relative flex min-h-screen items-center justify-center bg-[#0B0E14] px-4">
             {/* Background */}
             <div
                 className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full opacity-15 blur-3xl"
@@ -87,11 +87,11 @@ export default function SignupPage() {
             >
                 {/* Logo */}
                 <div className="mb-8 flex flex-col items-center">
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/25">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-[0_0_15px_rgba(0,242,255,0.3)]">
                         <Globe className="h-6 w-6 text-white" />
                     </div>
                     <h1 className="text-xl font-bold text-white">
-                        Join CitSci<span className="text-cyan-400">Net</span>
+                        Join CitSci<span className="text-[#00F2FF]">Net</span>
                     </h1>
                     <p className="mt-1 text-sm text-white/40">Create your account to get started</p>
                 </div>
@@ -101,7 +101,7 @@ export default function SignupPage() {
                     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                         {/* Role selection */}
                         <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#00F2FF]">
                                 I am a
                             </label>
                             <div className="grid grid-cols-2 gap-3">
@@ -111,8 +111,8 @@ export default function SignupPage() {
                                         type="button"
                                         onClick={() => setRole(r.value)}
                                         className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all duration-200 ${role === r.value
-                                                ? 'border-cyan-400/50 bg-cyan-400/10 shadow-[0_0_20px_rgba(34,211,238,0.1)]'
-                                                : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                                            ? 'border-[#00F2FF]/30 bg-[#00F2FF]/10 shadow-[0_0_20px_rgba(0,242,255,0.1)]'
+                                            : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
                                             }`}
                                     >
                                         <div
@@ -132,7 +132,7 @@ export default function SignupPage() {
 
                         {/* Name */}
                         <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#00F2FF]">
                                 Name
                             </label>
                             <div className="relative">
@@ -142,14 +142,14 @@ export default function SignupPage() {
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                     placeholder="Your name"
-                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/30"
                                 />
                             </div>
                         </div>
 
                         {/* Email */}
                         <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#00F2FF]">
                                 Email *
                             </label>
                             <div className="relative">
@@ -160,14 +160,14 @@ export default function SignupPage() {
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="you@example.com"
                                     required
-                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/30"
                                 />
                             </div>
                         </div>
 
                         {/* Password */}
                         <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#00F2FF]">
                                 Password *
                             </label>
                             <div className="relative">
@@ -178,7 +178,7 @@ export default function SignupPage() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="Min 6 characters"
                                     required
-                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-10 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-10 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/30"
                                 />
                                 <button
                                     type="button"
@@ -192,7 +192,7 @@ export default function SignupPage() {
 
                         {/* Confirm password */}
                         <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#00F2FF]">
                                 Confirm Password *
                             </label>
                             <div className="relative">
@@ -203,7 +203,7 @@ export default function SignupPage() {
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     placeholder="Repeat password"
                                     required
-                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+                                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/30"
                                 />
                             </div>
                         </div>
@@ -220,7 +220,7 @@ export default function SignupPage() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="group flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-500/25 transition-all duration-300 hover:shadow-cyan-500/40 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="group flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 py-3 text-sm font-bold text-white shadow-lg shadow-[0_0_15px_rgba(0,242,255,0.3)] transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,242,255,0.5)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isLoading ? (
                                 <>
@@ -246,7 +246,7 @@ export default function SignupPage() {
                     {/* Login link */}
                     <p className="text-center text-sm text-white/50">
                         Already have an account?{' '}
-                        <Link href="/login" className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors">
+                        <Link href="/login" className="font-semibold text-[#00F2FF] hover:text-[#00F2FF]/80 transition-colors">
                             Log In
                         </Link>
                     </p>

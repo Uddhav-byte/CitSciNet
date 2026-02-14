@@ -9,15 +9,19 @@ import useMissionStore from '../../../store/useMissionStore';
 import UploadObservation from '../../../components/UploadObservation';
 import ObservationFeed from '../../../components/ObservationFeed';
 import MissionPanel from '../../../components/MissionPanel';
-import { Layers, Camera, X, Sparkles, Target, ChevronLeft, ChevronRight, MapPin, Zap } from 'lucide-react';
+import GamificationPanel from '../../../components/GamificationPanel';
+import {
+    Camera, X, Sparkles, Target, ChevronLeft, ChevronRight,
+    MapPin, Zap, TrendingUp, Award, Eye, Upload, Trophy
+} from 'lucide-react';
 
 const MapComponent = dynamic(() => import('../../../components/MapComponent'), {
     ssr: false,
     loading: () => (
-        <div className="flex h-full w-full items-center justify-center bg-gray-950">
+        <div className="flex h-full w-full items-center justify-center" style={{ background: '#0B0E14' }}>
             <div className="flex flex-col items-center gap-3">
-                <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-                <span className="text-sm text-cyan-400/70">Loading map...</span>
+                <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#00F2FF] border-t-transparent" />
+                <span className="text-sm text-[#00F2FF]/60">Loading map...</span>
             </div>
         </div>
     ),
@@ -33,10 +37,11 @@ export default function CitizenDashboard() {
     const setMissions = useMissionStore((s) => s.setMissions);
     const [userLocation, setUserLocation] = useState(null);
     const [showObservationPanel, setShowObservationPanel] = useState(false);
+    const [selectedMission, setSelectedMission] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState('feed');
+    const [flyTarget, setFlyTarget] = useState(null);
 
-    // Fetch observations
     const { data: obsData } = useQuery({
         queryKey: ['observations'],
         queryFn: async () => {
@@ -48,7 +53,6 @@ export default function CitizenDashboard() {
         retryDelay: 2000,
     });
 
-    // Fetch missions
     const { data: missionData } = useQuery({
         queryKey: ['missions'],
         queryFn: async () => {
@@ -60,74 +64,72 @@ export default function CitizenDashboard() {
         retryDelay: 2000,
     });
 
-    useEffect(() => {
-        if (obsData) setObservations(obsData);
-    }, [obsData, setObservations]);
+    useEffect(() => { if (obsData) setObservations(obsData); }, [obsData, setObservations]);
+    useEffect(() => { if (missionData) setMissions(missionData); }, [missionData, setMissions]);
 
-    useEffect(() => {
-        if (missionData) setMissions(missionData);
-    }, [missionData, setMissions]);
-
-    // Track user location
     useEffect(() => {
         if (!navigator.geolocation) return;
         const watchId = navigator.geolocation.watchPosition(
-            (pos) => {
-                setUserLocation({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                });
-            },
+            (pos) => setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
             () => { },
             { enableHighAccuracy: true, timeout: 10000 }
         );
         return () => navigator.geolocation.clearWatch(watchId);
     }, []);
 
+    // When MissionPanel's "Submit Data" is clicked, open observation form with that mission
+    const handleSubmitForMission = (mission) => {
+        setSelectedMission(mission);
+        setShowObservationPanel(true);
+    };
+
+    // When observation panel opens without mission context (generic)
+    const handleGenericObservation = () => {
+        if (showObservationPanel) {
+            setShowObservationPanel(false);
+            setSelectedMission(null);
+        } else {
+            setSelectedMission(null);
+            setShowObservationPanel(true);
+        }
+    };
+
+    // Compute personal stats
+    const myObservations = observations.filter(o => o.userName === (user?.name || 'Anonymous'));
+    const uniqueCategories = new Set(myObservations.map(o => o.category));
+
     return (
         <div className="relative flex flex-1 overflow-hidden">
-            {/* ═══ Full-screen Map ═══ */}
+            {/* Map Area */}
             <div className="flex-1 relative">
-                <MapComponent
-                    missions={missions}
-                    userLocation={userLocation}
-                />
+                <MapComponent missions={missions} userLocation={userLocation} flyTarget={flyTarget} />
 
-                {/* ── Top-left: Map controls ── */}
-                <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
-                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-xs backdrop-blur-sm">
-                        <Layers className="h-3.5 w-3.5 text-cyan-400" />
-                        <span className="text-white/70">Satellite 3D</span>
-                    </div>
-                </div>
-
-                {/* ── Top-center: Live stats pill ── */}
+                {/* Top center: Live stats */}
                 <div className="absolute top-4 left-1/2 z-10 -translate-x-1/2">
-                    <div className="flex items-center gap-4 rounded-full border border-white/10 bg-black/60 px-5 py-2 backdrop-blur-md">
+                    <div className="glass-surface flex items-center gap-4 rounded-full px-5 py-2">
                         <div className="flex items-center gap-1.5 text-xs">
-                            <MapPin className="h-3 w-3 text-cyan-400" />
-                            <span className="font-mono text-white/80">{observations.length}</span>
-                            <span className="text-white/40">observations</span>
+                            <MapPin className="h-3 w-3 text-[#00F2FF]" />
+                            <span className="font-mono text-white/70">{observations.length}</span>
+                            <span className="text-white/30">obs</span>
                         </div>
-                        <div className="h-3 w-px bg-white/15" />
+                        <div className="h-3 w-px bg-white/10" />
                         <div className="flex items-center gap-1.5 text-xs">
-                            <Target className="h-3 w-3 text-purple-400" />
-                            <span className="font-mono text-white/80">{missions.length}</span>
-                            <span className="text-white/40">missions</span>
+                            <Target className="h-3 w-3 text-[#dc2626]" />
+                            <span className="font-mono text-white/70">{missions.length}</span>
+                            <span className="text-white/30">missions</span>
                         </div>
-                        <div className="h-3 w-px bg-white/15" />
+                        <div className="h-3 w-px bg-white/10" />
                         <div className="flex items-center gap-1.5 text-xs">
-                            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
-                            <span className="text-green-400/80">Live</span>
+                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ animation: 'heartbeat 2s ease-in-out infinite' }} />
+                            <span className="text-emerald-400/70">Live</span>
                         </div>
                     </div>
                 </div>
 
-                {/* ── Bottom-right: Floating AI Observation Button ── */}
+                {/* FAB: New Observation */}
                 <button
-                    onClick={() => setShowObservationPanel(!showObservationPanel)}
-                    className="absolute bottom-6 right-6 z-[1000] flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-3.5 shadow-xl shadow-cyan-500/30 transition-all duration-300 hover:scale-105 hover:shadow-cyan-500/50"
-                    style={{ animation: 'pulseGlow 3s ease-in-out infinite' }}
+                    onClick={handleGenericObservation}
+                    className="btn-glow absolute bottom-6 right-6 z-[1000] flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#00F2FF] to-[#3b82f6] px-5 py-3.5 shadow-xl transition-all duration-300 hover:scale-105"
                 >
                     {showObservationPanel ? (
                         <X className="h-5 w-5 text-white" />
@@ -140,68 +142,91 @@ export default function CitizenDashboard() {
                     )}
                 </button>
 
-                {/* ── Floating observation form ── */}
+                {/* Floating observation form */}
                 {showObservationPanel && (
                     <div
-                        className="absolute bottom-20 right-6 z-[1000] w-[380px] max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-950/95 p-5 shadow-2xl backdrop-blur-xl"
-                        style={{ animation: 'fadeSlideIn 0.3s ease both' }}
+                        className="absolute bottom-20 right-6 z-[1000] w-[400px] max-h-[75vh] overflow-y-auto rounded-2xl p-5 shadow-2xl"
+                        style={{
+                            background: 'rgba(21, 25, 33, 0.95)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            animation: 'fadeSlideIn 0.3s ease both',
+                        }}
                     >
                         <div className="mb-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4 text-purple-400" />
-                                <h3 className="text-sm font-bold text-white">New Observation</h3>
-                                <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+                                {selectedMission ? (
+                                    <>
+                                        <Upload className="h-4 w-4 text-[#9D50FF]" />
+                                        <h3 className="text-sm font-bold text-white">Submit Data</h3>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="h-4 w-4 text-[#9D50FF]" />
+                                        <h3 className="text-sm font-bold text-white">New Observation</h3>
+                                    </>
+                                )}
+                                <span className="rounded-full bg-[#9D50FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#9D50FF]">
                                     AI-Powered
                                 </span>
                             </div>
                             <button
-                                onClick={() => setShowObservationPanel(false)}
-                                className="rounded-lg p-1 text-white/40 hover:bg-white/10 hover:text-white"
+                                onClick={() => { setShowObservationPanel(false); setSelectedMission(null); }}
+                                className="rounded-lg p-1 text-white/30 hover:bg-white/[0.06] hover:text-white"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <UploadObservation />
+                        <UploadObservation mission={selectedMission} />
                     </div>
                 )}
 
-                {/* ── Sidebar toggle button (visible when sidebar is closed) ── */}
+                {/* Sidebar toggle */}
                 {!sidebarOpen && (
                     <button
                         onClick={() => setSidebarOpen(true)}
-                        className="absolute top-1/2 right-0 z-20 -translate-y-1/2 rounded-l-xl border border-r-0 border-white/10 bg-gray-950/90 px-1.5 py-4 text-white/60 backdrop-blur-md transition-all hover:bg-gray-950 hover:text-white"
+                        className="absolute top-1/2 right-0 z-20 -translate-y-1/2 rounded-l-xl border border-r-0 border-white/[0.06] px-1.5 py-4 text-white/40 backdrop-blur-md transition-all hover:text-white"
+                        style={{ background: 'rgba(21,25,33,0.9)' }}
                     >
                         <ChevronLeft className="h-4 w-4" />
                     </button>
                 )}
             </div>
 
-            {/* ═══ Collapsible Right Sidebar ═══ */}
+            {/* Right Sidebar */}
             <aside
-                className={`flex shrink-0 flex-col border-l border-white/10 bg-gray-950/70 backdrop-blur-xl transition-all duration-300 ${sidebarOpen ? 'w-[340px]' : 'w-0 overflow-hidden border-l-0'
+                className={`flex shrink-0 flex-col border-l border-white/[0.06] transition-all duration-300 ${sidebarOpen ? 'w-[320px]' : 'w-0 overflow-hidden border-l-0'
                     }`}
+                style={{ background: 'rgba(11, 14, 20, 0.7)', backdropFilter: 'blur(16px)' }}
             >
-                {/* Collapse button */}
-                <button
-                    onClick={() => setSidebarOpen(false)}
-                    className="absolute top-1/2 -left-3 z-10 -translate-y-1/2 rounded-full border border-white/10 bg-gray-950 p-1 text-white/50 hover:text-white"
-                    style={{ position: 'relative', left: 0, top: 0, transform: 'none', marginLeft: 'auto', marginTop: '8px', marginRight: '8px', width: 'fit-content' }}
-                >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                </button>
+                {/* Collapse */}
+                {sidebarOpen && (
+                    <button
+                        onClick={() => setSidebarOpen(false)}
+                        className="ml-auto mr-2 mt-2 rounded-lg p-1 text-white/20 hover:text-white/50"
+                    >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                )}
 
-                {/* Tab bar */}
-                <div className="flex border-b border-white/10">
+                {/* Gamification Compact Widget */}
+                <div className="px-3 pb-3">
+                    <GamificationPanel compact />
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-white/[0.06]">
                     {[
                         { id: 'feed', label: 'Live Feed', icon: Sparkles },
-                        { id: 'missions', label: `Missions (${missions.length})`, icon: Target },
+                        { id: 'missions', label: 'Missions', icon: Target },
+                        { id: 'rewards', label: 'Rewards', icon: Trophy },
                     ].map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-[11px] font-medium transition-colors ${activeTab === tab.id
-                                ? 'border-b-2 border-cyan-400 text-cyan-400'
-                                : 'text-white/40 hover:text-white/60'
+                            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${activeTab === tab.id
+                                ? 'border-b-2 border-[#f59e0b] text-[#f59e0b]'
+                                : 'text-white/30 hover:text-white/50'
                                 }`}
                         >
                             <tab.icon className="h-3 w-3" />
@@ -210,21 +235,20 @@ export default function CitizenDashboard() {
                     ))}
                 </div>
 
-                {/* Tab content */}
-                <div className="flex-1 overflow-y-auto p-4">
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-3">
                     {activeTab === 'feed' ? (
                         <ObservationFeed />
-                    ) : (
-                        <MissionListView
-                            missions={missions}
-                            userName={user?.name || 'Anonymous'}
-                        />
-                    )}
+                    ) : activeTab === 'missions' ? (
+                        <MissionListView missions={missions} userName={user?.name || 'Anonymous'} onFlyTo={setFlyTarget} />
+                    ) : activeTab === 'rewards' ? (
+                        <GamificationPanel />
+                    ) : null}
                 </div>
 
                 {/* Footer */}
-                <div className="border-t border-white/10 px-4 py-2.5">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-white/20">
+                <div className="border-t border-white/[0.06] px-4 py-2">
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-white/15">
                         <span>CitSciNet v1.0</span>
                         <span>•</span>
                         <span>Hackathon 2026</span>
@@ -232,51 +256,97 @@ export default function CitizenDashboard() {
                 </div>
             </aside>
 
-            {/* ═══ Mission Detail Slide-in Panel (overlays everything) ═══ */}
-            <MissionPanel userName={user?.name || 'Anonymous'} />
+            {/* Mission Panel overlay — with submit data callback */}
+            <MissionPanel
+                userName={user?.name || 'Anonymous'}
+                onSubmitData={handleSubmitForMission}
+            />
         </div>
     );
 }
 
-// Simple mission list for the sidebar tab
-function MissionListView({ missions, userName }) {
+// Compute center of a GeoJSON polygon geometry
+function getGeometryCenter(geometry) {
+    try {
+        let coords = [];
+        if (geometry?.type === 'Polygon') {
+            coords = geometry.coordinates?.[0] || [];
+        } else if (geometry?.type === 'MultiPolygon') {
+            coords = geometry.coordinates?.[0]?.[0] || [];
+        } else if (geometry?.coordinates) {
+            coords = geometry.coordinates?.[0] || geometry.coordinates;
+        }
+        if (!coords.length) return null;
+        const lats = coords.map(c => c[1]);
+        const lngs = coords.map(c => c[0]);
+        return {
+            lat: lats.reduce((a, b) => a + b, 0) / lats.length,
+            lng: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+        };
+    } catch {
+        return null;
+    }
+}
+
+function MissionListView({ missions, userName, onFlyTo }) {
     const setActiveMission = useMissionStore((s) => s.setActiveMission);
 
+    const handleMissionClick = (mission) => {
+        setActiveMission(mission);
+        // Fly map to mission location
+        if (onFlyTo && mission.geometry) {
+            const center = getGeometryCenter(mission.geometry);
+            if (center) {
+                onFlyTo({ lat: center.lat, lng: center.lng, zoom: 14 });
+            }
+        }
+    };
+
     return (
-        <div className="space-y-3">
+        <div className="space-y-2">
             {missions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-white/40">
-                    <Target className="h-12 w-12 mb-2" />
-                    <p className="text-sm">No active missions</p>
+                <div className="flex flex-col items-center justify-center py-12 text-white/30">
+                    <Target className="h-10 w-10 mb-2" />
+                    <p className="text-xs">No active missions</p>
                 </div>
             ) : (
-                missions.map((mission) => {
-                    const isAccepted = mission.userMissions?.some(
-                        (um) => um.userName === userName
-                    );
-
+                missions.map((mission, i) => {
+                    const isAccepted = mission.userMissions?.some((um) => um.userName === userName);
                     return (
                         <button
                             key={mission.id}
-                            onClick={() => setActiveMission(mission)}
-                            className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-left transition-colors hover:bg-white/10"
+                            onClick={() => handleMissionClick(mission)}
+                            className="glass-card w-full p-3 text-left transition-all hover:bg-white/[0.04]"
+                            style={{ animation: `fadeSlideIn 0.3s ease ${i * 60}ms both` }}
                         >
-                            <div className="mb-2 flex items-start justify-between">
+                            <div className="mb-1.5 flex items-start justify-between">
                                 <h4 className="text-sm font-bold text-white">{mission.title}</h4>
-                                <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs font-semibold text-yellow-400">
-                                    🎯 {mission.bountyPoints}
+                                <span className="rounded-full bg-[#00F2FF]/10 px-2 py-0.5 text-xs font-bold text-[#00F2FF]">
+                                    {mission.bountyPoints}
                                 </span>
                             </div>
                             {mission.description && (
-                                <p className="mb-2 text-xs text-white/50 line-clamp-2">
-                                    {mission.description}
-                                </p>
+                                <p className="mb-1.5 text-xs text-white/40 line-clamp-2">{mission.description}</p>
                             )}
-                            {isAccepted && (
-                                <span className="inline-flex items-center gap-1 rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
-                                    ✅ Accepted
+                            <div className="flex items-center gap-2">
+                                {isAccepted && (
+                                    <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                                        ✅ Accepted
+                                    </span>
+                                )}
+                                <span className="text-[10px] text-white/20">
+                                    {mission.userMissions?.length || 0} joined
                                 </span>
-                            )}
+                                {mission.dataRequirement && (
+                                    <span className={`ml-auto rounded px-1.5 py-0.5 text-[9px] font-bold ${mission.dataRequirement === 'image' ? 'bg-[#00F2FF]/10 text-[#00F2FF]' :
+                                        mission.dataRequirement === 'text' ? 'bg-[#9D50FF]/10 text-[#9D50FF]' :
+                                            'bg-emerald-500/10 text-emerald-400'
+                                        }`}>
+                                        {mission.dataRequirement === 'image' ? '📷' :
+                                            mission.dataRequirement === 'text' ? '📝' : '📷📝'}
+                                    </span>
+                                )}
+                            </div>
                         </button>
                     );
                 })

@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
+import { validateObservation, validateImage } from './services/aiValidation.js';
 
 dotenv.config();
 
@@ -63,6 +64,8 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// ==================== OBSERVATIONS ====================
+
 app.get('/api/observations', async (req, res) => {
     try {
         const observations = await prisma.observation.findMany({
@@ -79,35 +82,117 @@ app.get('/api/observations', async (req, res) => {
 app.post('/api/observations', async (req, res) => {
     try {
         const {
-            latitude,
-            longitude,
-            imageUrl,
-            category,
-            aiLabel,
-            confidenceScore,
-            userName,
-            notes
+            latitude, longitude, imageUrl, audioUrl, category,
+            aiLabel, confidenceScore, userName, userId, notes, missionId
         } = req.body;
 
         if (!latitude || !longitude || !category) {
             return res.status(400).json({ error: 'latitude, longitude, and category are required' });
         }
 
+        // Create the observation immediately (with pending status)
         const observation = await prisma.observation.create({
             data: {
                 latitude: parseFloat(latitude),
                 longitude: parseFloat(longitude),
                 imageUrl: imageUrl || null,
+                audioUrl: audioUrl || null,
                 category,
                 aiLabel: aiLabel || null,
                 confidenceScore: confidenceScore ? parseFloat(confidenceScore) : null,
                 userName: userName || 'Anonymous',
-                notes: notes || null
+                userId: userId || null,
+                missionId: missionId || null,
+                notes: notes || null,
+                validationStatus: 'pending',
             }
         });
 
-        io.emit('new-observation', observation);
+        // Run AI validation asynchronously (don't block the response)
+        (async () => {
+            try {
+                // Fetch mission context if linked
+                let mission = null;
+                if (missionId) {
+                    mission = await prisma.mission.findUnique({ where: { id: missionId } });
+                }
 
+                // Run data validation via Groq
+                const validation = await validateObservation({ observation, mission });
+
+                // If image present, also validate the image
+                if (imageUrl && mission) {
+                    const imageResult = await validateImage({ imageUrl, mission });
+                    if (imageResult.score !== undefined) {
+                        // Average data + image scores
+                        validation.score = (validation.score + imageResult.score) / 2;
+                        validation.notes += `\n\nImage Analysis: ${imageResult.description || 'N/A'}`;
+                        validation.status = validation.score >= 0.80 ? 'auto_approved' : 'needs_review';
+                    }
+                }
+
+                // Update the observation with validation results
+                const updated = await prisma.observation.update({
+                    where: { id: observation.id },
+                    data: {
+                        validationStatus: validation.status,
+                        validationScore: validation.score,
+                        validationNotes: validation.notes,
+                        // Auto-verify if score >= 0.80
+                        verified: validation.status === 'auto_approved',
+                    },
+                });
+
+                console.log(`🤖 Observation ${observation.id} → ${validation.status} (${(validation.score * 100).toFixed(0)}%)`);
+
+                // Emit real-time update with validation status
+                io.emit('observation-validated', {
+                    id: updated.id,
+                    validationStatus: updated.validationStatus,
+                    validationScore: updated.validationScore,
+                    validationNotes: updated.validationNotes,
+                    verified: updated.verified,
+                });
+
+                // If needs review, notify moderators
+                if (validation.status === 'needs_review') {
+                    io.emit('review-needed', {
+                        observationId: updated.id,
+                        category: updated.category,
+                        userName: updated.userName,
+                        score: validation.score,
+                    });
+                }
+            } catch (valErr) {
+                console.error('Async validation failed:', valErr.message);
+                await prisma.observation.update({
+                    where: { id: observation.id },
+                    data: {
+                        validationStatus: 'needs_review',
+                        validationNotes: `Validation error: ${valErr.message}`,
+                    },
+                });
+            }
+        })();
+
+        // Award points dynamic based on mission bounty
+        try {
+            let pointsToAward = 10;
+            let reason = 'observation';
+
+            if (missionId) {
+                const mission = await prisma.mission.findUnique({ where: { id: missionId } });
+                if (mission && mission.bountyPoints) {
+                    pointsToAward = mission.bountyPoints;
+                    reason = `mission bounty (${mission.title})`;
+                }
+            }
+
+            await awardPoints(observation.userName, pointsToAward, false);
+            io.emit('points-awarded', { userName: observation.userName, points: pointsToAward, reason });
+        } catch (e) { /* user may not exist */ }
+
+        io.emit('new-observation', observation);
         res.status(201).json(observation);
     } catch (err) {
         console.error('Failed to create observation:', err);
@@ -115,70 +200,50 @@ app.post('/api/observations', async (req, res) => {
     }
 });
 
-// ==================== UPLOAD ENDPOINT ====================
+// ==================== REVIEW QUEUE (Middleman) ====================
 
-app.post('/api/upload', upload.single('image'), async (req, res) => {
+// Get all observations that need review (for moderators)
+app.get('/api/observations/review-queue', async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No image file provided' });
-        }
-
-        const b64 = Buffer.from(req.file.buffer).toString('base64');
-        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-
-        const result = await cloudinary.uploader.upload(dataURI, {
-            folder: 'citsci-observations',
-            resource_type: 'image',
-            transformation: [
-                { quality: 'auto', fetch_format: 'auto' },
-                { width: 800, height: 600, crop: 'limit' },
-            ],
+        const observations = await prisma.observation.findMany({
+            where: { validationStatus: 'needs_review' },
+            orderBy: { createdAt: 'desc' },
         });
-
-        res.json({
-            url: result.secure_url,
-            publicId: result.public_id,
-            width: result.width,
-            height: result.height,
-        });
+        res.json(observations);
     } catch (err) {
-        console.error('Upload failed:', err);
-        // Fallback: if Cloudinary is not configured, accept base64
-        if (req.body?.base64) {
-            return res.json({ url: req.body.base64 });
-        }
-        res.status(500).json({ error: 'Upload failed' });
+        console.error('Failed to fetch review queue:', err);
+        res.status(500).json({ error: 'Failed to fetch review queue' });
     }
 });
 
-// Base64 upload fallback (no Cloudinary needed)
-app.post('/api/upload-base64', async (req, res) => {
+// Moderator approves or rejects an observation
+app.patch('/api/observations/:id/review', async (req, res) => {
     try {
-        const { base64 } = req.body;
-        if (!base64) return res.status(400).json({ error: 'No image data' });
+        const { id } = req.params;
+        const { action, reviewerNotes } = req.body; // action: 'approve' | 'reject'
 
-        // Try Cloudinary first
-        try {
-            const result = await cloudinary.uploader.upload(base64, {
-                folder: 'citsci-observations',
-                resource_type: 'image',
-                transformation: [
-                    { quality: 'auto', fetch_format: 'auto' },
-                    { width: 800, height: 600, crop: 'limit' },
-                ],
-            });
-            return res.json({ url: result.secure_url });
-        } catch {
-            // Cloudinary not configured — just return the base64
-            return res.json({ url: base64 });
+        if (!action || !['approve', 'reject'].includes(action)) {
+            return res.status(400).json({ error: 'action must be "approve" or "reject"' });
         }
+
+        const observation = await prisma.observation.update({
+            where: { id },
+            data: {
+                validationStatus: action === 'approve' ? 'auto_approved' : 'rejected',
+                verified: action === 'approve',
+                validationNotes: reviewerNotes
+                    ? `Manual review: ${reviewerNotes}`
+                    : `Manually ${action}d by moderator`,
+            },
+        });
+
+        io.emit('observation-reviewed', observation);
+        res.json(observation);
     } catch (err) {
-        console.error('Base64 upload failed:', err);
-        res.status(500).json({ error: 'Upload failed' });
+        console.error('Review failed:', err);
+        res.status(500).json({ error: 'Review failed' });
     }
 });
-
-// ==================== OBSERVATION STATUS ENDPOINTS ====================
 
 app.patch('/api/observations/:id/verify', async (req, res) => {
     try {
@@ -207,7 +272,122 @@ app.delete('/api/observations/:id', async (req, res) => {
     }
 });
 
-// ==================== MISSION ENDPOINTS ====================
+// ==================== EXPORT ====================
+
+app.get('/api/observations/export', async (req, res) => {
+    try {
+        const format = req.query.format || 'json';
+        const observations = await prisma.observation.findMany({
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (format === 'csv') {
+            const headers = ['id', 'latitude', 'longitude', 'category', 'aiLabel', 'confidenceScore', 'userName', 'notes', 'verified', 'createdAt'];
+            const csvRows = [headers.join(',')];
+            observations.forEach(obs => {
+                csvRows.push(headers.map(h => {
+                    const val = obs[h];
+                    if (val === null || val === undefined) return '';
+                    const str = String(val);
+                    return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+                }).join(','));
+            });
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename=citsci-export-${new Date().toISOString().slice(0, 10)}.csv`);
+            return res.send(csvRows.join('\n'));
+        }
+
+        res.json(observations);
+    } catch (err) {
+        console.error('Export failed:', err);
+        res.status(500).json({ error: 'Export failed' });
+    }
+});
+
+// ==================== UPLOAD ====================
+
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+
+        const b64 = Buffer.from(req.file.buffer).toString('base64');
+        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+
+        const result = await cloudinary.uploader.upload(dataURI, {
+            folder: 'citsci-observations',
+            resource_type: 'image',
+            transformation: [
+                { quality: 'auto', fetch_format: 'auto' },
+                { width: 800, height: 600, crop: 'limit' },
+            ],
+        });
+
+        res.json({
+            url: result.secure_url,
+            publicId: result.public_id,
+            width: result.width,
+            height: result.height,
+        });
+    } catch (err) {
+        console.error('Upload failed:', err);
+        if (req.body?.base64) {
+            return res.json({ url: req.body.base64 });
+        }
+        res.status(500).json({ error: 'Upload failed' });
+    }
+});
+
+app.post('/api/upload-audio', upload.single('audio'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No audio file provided' });
+        }
+
+        const b64 = Buffer.from(req.file.buffer).toString('base64');
+        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+
+        const result = await cloudinary.uploader.upload(dataURI, {
+            folder: 'citsci-observations-audio',
+            resource_type: 'video', // Cloudinary treats audio as video
+        });
+
+        res.json({
+            url: result.secure_url,
+            publicId: result.public_id
+        });
+    } catch (err) {
+        console.error('Audio upload failed:', err);
+        res.status(500).json({ error: 'Audio upload failed' });
+    }
+});
+
+app.post('/api/upload-base64', async (req, res) => {
+    try {
+        const { base64 } = req.body;
+        if (!base64) return res.status(400).json({ error: 'No image data' });
+
+        try {
+            const result = await cloudinary.uploader.upload(base64, {
+                folder: 'citsci-observations',
+                resource_type: 'image',
+                transformation: [
+                    { quality: 'auto', fetch_format: 'auto' },
+                    { width: 800, height: 600, crop: 'limit' },
+                ],
+            });
+            return res.json({ url: result.secure_url });
+        } catch {
+            return res.json({ url: base64 });
+        }
+    } catch (err) {
+        console.error('Base64 upload failed:', err);
+        res.status(500).json({ error: 'Upload failed' });
+    }
+});
+
+// ==================== MISSIONS ====================
 
 app.get('/api/missions', async (req, res) => {
     try {
@@ -229,7 +409,7 @@ app.get('/api/missions', async (req, res) => {
 
 app.post('/api/missions', async (req, res) => {
     try {
-        const { title, description, bountyPoints, geometry, createdBy } = req.body;
+        const { title, description, scientificGoal, dataProtocol, dataRequirement, bountyPoints, geometry, missionType, createdBy } = req.body;
 
         if (!title || !geometry) {
             return res.status(400).json({ error: 'title and geometry are required' });
@@ -239,7 +419,11 @@ app.post('/api/missions', async (req, res) => {
             data: {
                 title,
                 description: description || null,
+                scientificGoal: scientificGoal || null,
+                dataProtocol: dataProtocol || null,
+                dataRequirement: dataRequirement || 'both',
                 bountyPoints: bountyPoints || 10,
+                missionType: missionType || 'Wildlife',
                 geometry,
                 createdBy: createdBy || 'Researcher'
             }
@@ -305,11 +489,360 @@ app.post('/api/missions/:id/complete', async (req, res) => {
             return res.status(404).json({ error: 'No accepted mission found for this user' });
         }
 
-        io.emit('mission-completed', { missionId: id, userName });
-        res.json({ success: true, message: 'Mission completed!' });
+        // Award bounty points for mission completion
+        const mission = await prisma.mission.findUnique({ where: { id } });
+        const bountyAwarded = mission?.bountyPoints || 10;
+        try {
+            await awardPoints(userName, bountyAwarded, true);
+            io.emit('points-awarded', { userName, points: bountyAwarded, reason: 'mission-bounty', missionTitle: mission?.title });
+        } catch (e) { /* user may not exist */ }
+
+        io.emit('mission-completed', { missionId: id, userName, bountyAwarded });
+        res.json({ success: true, message: 'Mission completed!', bountyAwarded });
     } catch (err) {
         console.error('Failed to complete mission:', err);
         res.status(500).json({ error: 'Failed to complete mission' });
+    }
+});
+
+// Helper: compute rank from total points
+function computeRank(totalPoints) {
+    if (totalPoints >= 500) return 'Master';
+    if (totalPoints >= 250) return 'Expert';
+    if (totalPoints >= 100) return 'Explorer';
+    if (totalPoints >= 30) return 'Scout';
+    return 'Novice';
+}
+
+// Award points to a user (upsert if user doesn't exist by name)
+async function awardPoints(userName, points, isBounty = false) {
+    // Try to find user by name
+    let user = await prisma.user.findFirst({ where: { name: userName } });
+    if (user) {
+        const newTotal = user.totalPoints + points;
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                totalPoints: newTotal,
+                observationCount: { increment: isBounty ? 0 : 1 },
+                bountyCount: { increment: isBounty ? 1 : 0 },
+                rank: computeRank(newTotal),
+            },
+        });
+    }
+    // If no user record, points are tracked on client side
+}
+
+// ==================== GAMIFICATION ====================
+
+// Leaderboard — top contributors
+app.get('/api/leaderboard', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const users = await prisma.user.findMany({
+            where: { role: 'citizen' },
+            orderBy: { totalPoints: 'desc' },
+            take: limit,
+            select: {
+                id: true,
+                name: true,
+                rank: true,
+                totalPoints: true,
+                observationCount: true,
+                bountyCount: true,
+                createdAt: true,
+            },
+        });
+        res.json(users);
+    } catch (err) {
+        console.error('Leaderboard failed:', err);
+        res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+});
+
+// User stats
+app.get('/api/users/:name/stats', async (req, res) => {
+    try {
+        const { name } = req.params;
+        let user = await prisma.user.findFirst({
+            where: { name },
+            select: {
+                id: true, name: true, rank: true,
+                totalPoints: true, observationCount: true, bountyCount: true,
+            },
+        });
+
+        if (!user) {
+            // Build stats from observations for an unregistered user
+            const obsCount = await prisma.observation.count({ where: { userName: name } });
+            const completedMissions = await prisma.userMission.count({
+                where: { userName: name, status: 'completed' },
+            });
+            user = {
+                name,
+                rank: computeRank(obsCount * 10 + completedMissions * 25),
+                totalPoints: obsCount * 10 + completedMissions * 25,
+                observationCount: obsCount,
+                bountyCount: completedMissions,
+            };
+        }
+
+        // Next rank info
+        const rankThresholds = [
+            { rank: 'Novice', min: 0 },
+            { rank: 'Scout', min: 30 },
+            { rank: 'Explorer', min: 100 },
+            { rank: 'Expert', min: 250 },
+            { rank: 'Master', min: 500 },
+        ];
+        const currentIdx = rankThresholds.findIndex(r => r.rank === user.rank);
+        const nextRank = currentIdx < rankThresholds.length - 1 ? rankThresholds[currentIdx + 1] : null;
+        const currentMin = rankThresholds[currentIdx]?.min || 0;
+        const progress = nextRank
+            ? Math.min(100, Math.round(((user.totalPoints - currentMin) / (nextRank.min - currentMin)) * 100))
+            : 100;
+
+        res.json({
+            ...user,
+            nextRank: nextRank?.rank || null,
+            nextRankPoints: nextRank?.min || null,
+            rankProgress: progress,
+        });
+    } catch (err) {
+        console.error('User stats failed:', err);
+        res.status(500).json({ error: 'Failed to fetch user stats' });
+    }
+});
+
+// Points summary (all-time stats)
+app.get('/api/stats/summary', async (req, res) => {
+    try {
+        const [totalObs, totalUsers, totalMissions, topContributors] = await Promise.all([
+            prisma.observation.count(),
+            prisma.user.count({ where: { role: 'citizen' } }),
+            prisma.mission.count({ where: { active: true } }),
+            prisma.user.findMany({
+                where: { role: 'citizen' },
+                orderBy: { totalPoints: 'desc' },
+                take: 3,
+                select: { name: true, totalPoints: true, rank: true },
+            }),
+        ]);
+        res.json({ totalObs, totalUsers, totalMissions, topContributors });
+    } catch (err) {
+        console.error('Stats summary failed:', err);
+        res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// ==================== SPATIAL QUERIES ====================
+
+// Bounding-box search for observations
+app.get('/api/observations/spatial', async (req, res) => {
+    try {
+        const { minLat, maxLat, minLng, maxLng, category } = req.query;
+
+        if (!minLat || !maxLat || !minLng || !maxLng) {
+            return res.status(400).json({ error: 'minLat, maxLat, minLng, maxLng are required' });
+        }
+
+        const where = {
+            latitude: { gte: parseFloat(minLat), lte: parseFloat(maxLat) },
+            longitude: { gte: parseFloat(minLng), lte: parseFloat(maxLng) },
+        };
+        if (category) where.category = category;
+
+        const observations = await prisma.observation.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+        });
+
+        res.json(observations);
+    } catch (err) {
+        console.error('Spatial query failed:', err);
+        res.status(500).json({ error: 'Spatial query failed' });
+    }
+});
+
+// Full area analysis for a given center point + radius (km)
+app.get('/api/area-analysis', async (req, res) => {
+    try {
+        const { lat, lng, radiusKm = 5 } = req.query;
+
+        if (!lat || !lng) {
+            return res.status(400).json({ error: 'lat and lng are required' });
+        }
+
+        const centerLat = parseFloat(lat);
+        const centerLng = parseFloat(lng);
+        const radius = parseFloat(radiusKm);
+
+        // Approximate bounding box (1 degree ≈ 111km)
+        const latDelta = radius / 111;
+        const lngDelta = radius / (111 * Math.cos(centerLat * Math.PI / 180));
+
+        const observations = await prisma.observation.findMany({
+            where: {
+                latitude: { gte: centerLat - latDelta, lte: centerLat + latDelta },
+                longitude: { gte: centerLng - lngDelta, lte: centerLng + lngDelta },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        // Get missions whose bounding boxes overlap this area
+        const allMissions = await prisma.mission.findMany({ where: { active: true } });
+        const nearbyMissions = allMissions.filter(m => {
+            if (!m.geometry?.coordinates?.[0]) return false;
+            const coords = m.geometry.coordinates[0];
+            const mLats = coords.map(c => c[1]);
+            const mLngs = coords.map(c => c[0]);
+            const mMinLat = Math.min(...mLats), mMaxLat = Math.max(...mLats);
+            const mMinLng = Math.min(...mLngs), mMaxLng = Math.max(...mLngs);
+            // Check bounding box overlap
+            return !(mMaxLat < centerLat - latDelta || mMinLat > centerLat + latDelta ||
+                mMaxLng < centerLng - lngDelta || mMinLng > centerLng + lngDelta);
+        });
+
+        // Compute analytics
+        const categoryBreakdown = {};
+        const speciesSet = new Set();
+        const dailyActivity = {};
+        let verifiedCount = 0;
+
+        observations.forEach(obs => {
+            categoryBreakdown[obs.category] = (categoryBreakdown[obs.category] || 0) + 1;
+            if (obs.aiLabel) speciesSet.add(obs.aiLabel);
+            if (obs.verified) verifiedCount++;
+            const day = new Date(obs.createdAt).toISOString().slice(0, 10);
+            dailyActivity[day] = (dailyActivity[day] || 0) + 1;
+        });
+
+        // Recent contributors
+        const contributorMap = {};
+        observations.forEach(obs => {
+            if (!contributorMap[obs.userName]) {
+                contributorMap[obs.userName] = { count: 0, latest: obs.createdAt };
+            }
+            contributorMap[obs.userName].count++;
+        });
+        const topContributors = Object.entries(contributorMap)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        res.json({
+            center: { lat: centerLat, lng: centerLng },
+            radiusKm: radius,
+            summary: {
+                totalObservations: observations.length,
+                uniqueSpecies: speciesSet.size,
+                verifiedCount,
+                verificationRate: observations.length > 0 ? (verifiedCount / observations.length * 100).toFixed(1) : 0,
+                activeMissions: nearbyMissions.length,
+            },
+            categoryBreakdown,
+            speciesList: [...speciesSet].sort(),
+            dailyActivity,
+            topContributors,
+            nearbyMissions: nearbyMissions.map(m => ({
+                id: m.id, title: m.title, missionType: m.missionType,
+                bountyPoints: m.bountyPoints, description: m.description,
+            })),
+            recentObservations: observations.slice(0, 10),
+        });
+    } catch (err) {
+        console.error('Area analysis failed:', err);
+        res.status(500).json({ error: 'Area analysis failed' });
+    }
+});
+
+// ==================== PAPERS ====================
+
+app.get('/api/papers', async (req, res) => {
+    try {
+        const papers = await prisma.paper.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: {
+                researcher: { select: { id: true, name: true, institution: true } },
+                mission: { select: { id: true, title: true, missionType: true } },
+            },
+        });
+        res.json(papers);
+    } catch (err) {
+        console.error('Failed to fetch papers:', err);
+        res.status(500).json({ error: 'Failed to fetch papers' });
+    }
+});
+
+app.post('/api/papers', async (req, res) => {
+    try {
+        const { title, abstract, aiSummary, pdfUrl, researcherId, missionId } = req.body;
+
+        if (!title || !researcherId) {
+            return res.status(400).json({ error: 'title and researcherId are required' });
+        }
+
+        const paper = await prisma.paper.create({
+            data: {
+                title,
+                abstract: abstract || null,
+                aiSummary: aiSummary || null,
+                pdfUrl: pdfUrl || null,
+                researcherId,
+                missionId: missionId || null,
+            },
+            include: {
+                researcher: { select: { name: true, institution: true } },
+                mission: { select: { title: true } },
+            },
+        });
+
+        io.emit('new-paper', paper);
+        res.status(201).json(paper);
+    } catch (err) {
+        console.error('Failed to create paper:', err);
+        res.status(500).json({ error: 'Failed to create paper' });
+    }
+});
+
+// ==================== USERS & LEADERBOARD ====================
+
+app.get('/api/users', async (req, res) => {
+    try {
+        const { role } = req.query;
+        const where = role ? { role } : {};
+        const users = await prisma.user.findMany({
+            where,
+            orderBy: { totalPoints: 'desc' },
+            select: {
+                id: true, name: true, email: true, role: true,
+                institution: true, rank: true, totalPoints: true,
+                observationCount: true, bountyCount: true, createdAt: true,
+            },
+        });
+        res.json(users);
+    } catch (err) {
+        console.error('Failed to fetch users:', err);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+app.get('/api/users/leaderboard', async (req, res) => {
+    try {
+        const leaderboard = await prisma.user.findMany({
+            where: { role: 'citizen' },
+            orderBy: { totalPoints: 'desc' },
+            take: 10,
+            select: {
+                id: true, name: true, rank: true,
+                totalPoints: true, observationCount: true, bountyCount: true,
+            },
+        });
+        res.json(leaderboard);
+    } catch (err) {
+        console.error('Failed to fetch leaderboard:', err);
+        res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 });
 

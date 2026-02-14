@@ -7,32 +7,58 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  name             String
+  role             String    @default("citizen") // citizen, researcher
+  institution      String?   // For researchers
+  rank             String    @default("Novice")  // Novice, Scout, Peer Reviewer
+  totalPoints      Int       @default(0)
+  observationCount Int       @default(0)
+  bountyCount      Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  papers           Paper[]
+}
+
 model Observation {
   id              String   @id @default(uuid())
   latitude        Float
   longitude       Float
   imageUrl        String?
+  audioUrl        String?
   category        String
   aiLabel         String?
   confidenceScore Float?
   userName        String   @default("Anonymous")
+  userId          String?
   notes           String?
   verified        Boolean  @default(false)
+  missionId       String?
+  validationStatus String  @default("pending") // pending, auto_approved, needs_review, rejected
+  validationScore  Float?  // 0-1, AI confidence that data is relevant
+  validationNotes  String? // AI reasoning
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
 
 model Mission {
-  id          String         @id @default(uuid())
-  title       String
-  description String?
-  bountyPoints Int           @default(10)
-  geometry    Json           // GeoJSON polygon
-  createdBy   String         @default("Researcher")
-  active      Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  userMissions UserMission[]
+  id              String         @id @default(uuid())
+  title           String
+  description     String?
+  scientificGoal  String?
+  dataProtocol    String?        // Step-by-step instructions
+  dataRequirement String         @default("both") // image, text, both
+  bountyPoints    Int            @default(10)
+  missionType     String         @default("Wildlife") // Water, Wildlife, Air, Plant
+  geometry        Json           // GeoJSON polygon
+  createdBy       String         @default("Researcher")
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  userMissions    UserMission[]
+  papers          Paper[]
 }
 
 model UserMission {
@@ -45,4 +71,18 @@ model UserMission {
   completedAt DateTime?
   
   @@unique([missionId, userName])
+}
+
+model Paper {
+  id           String   @id @default(uuid())
+  title        String
+  abstract     String?
+  aiSummary    String?  // AI-generated plain-language summary
+  pdfUrl       String?
+  researcherId String
+  researcher   User     @relation(fields: [researcherId], references: [id], onDelete: Cascade)
+  missionId    String?
+  mission      Mission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

@@ -1,46 +1,47 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { CheckCircle2, X } from 'lucide-react';
+import { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle, X } from 'lucide-react';
 
-export default function Toast({ message, show, onClose, duration = 3000 }) {
-    const [visible, setVisible] = useState(false);
-
+export default function Toast({ message, show, onClose, duration = 3500 }) {
     useEffect(() => {
         if (show) {
-            setVisible(true);
-            const timer = setTimeout(() => {
-                setVisible(false);
-                setTimeout(() => onClose?.(), 300);
-            }, duration);
+            const timer = setTimeout(onClose, duration);
             return () => clearTimeout(timer);
         }
-    }, [show, duration, onClose]);
-
-    if (!show && !visible) return null;
+    }, [show, onClose, duration]);
 
     return (
-        <div
-            className={`fixed top-6 left-1/2 z-[9999] -translate-x-1/2 transition-all duration-300 ${visible
-                    ? 'translate-y-0 opacity-100'
-                    : '-translate-y-4 opacity-0'
-                }`}
-        >
-            <div className="flex items-center gap-3 rounded-2xl border border-green-500/30 bg-gray-900/95 px-5 py-3 shadow-2xl shadow-green-500/10 backdrop-blur-xl">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                </div>
-                <span className="text-sm font-medium text-white">{message}</span>
-                <button
-                    onClick={() => {
-                        setVisible(false);
-                        setTimeout(() => onClose?.(), 300);
-                    }}
-                    className="ml-2 rounded-lg p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+        <AnimatePresence>
+            {show && (
+                <motion.div
+                    initial={{ y: -40, opacity: 0, scale: 0.95 }}
+                    animate={{ y: 0, opacity: 1, scale: 1 }}
+                    exit={{ y: -20, opacity: 0, scale: 0.95 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                    className="fixed top-6 left-1/2 z-[5000] -translate-x-1/2"
                 >
-                    <X className="h-3.5 w-3.5" />
-                </button>
-            </div>
-        </div>
+                    <div
+                        className="flex items-center gap-2.5 rounded-xl px-5 py-3 shadow-2xl"
+                        style={{
+                            background: 'rgba(21, 25, 33, 0.95)',
+                            backdropFilter: 'blur(16px)',
+                            border: '1px solid rgba(0, 242, 255, 0.15)',
+                            boxShadow: '0 0 30px rgba(0, 242, 255, 0.1)',
+                        }}
+                    >
+                        <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-sm font-medium text-white">{message}</span>
+                        <button
+                            onClick={onClose}
+                            className="ml-2 rounded p-0.5 text-white/30 hover:text-white/60"
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 }
