@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import useObservationStore from '../../../store/useObservationStore';
 import useAuthStore from '../../../store/authStore';
+import useMissionStore from '../../../store/useMissionStore';
 import {
     BarChart3, Target, Eye, CheckCircle2, AlertTriangle,
     ArrowUpDown, Search, MapPin, Sparkles, Clock, Filter, X
@@ -54,7 +55,8 @@ export default function ResearcherDashboard() {
     const user = useAuthStore((s) => s.user);
     const setObservations = useObservationStore((s) => s.setObservations);
     const observations = useObservationStore((s) => s.observations);
-    const [missions, setMissions] = useState([]);
+    const missions = useMissionStore((s) => s.missions);
+    const setMissions = useMissionStore((s) => s.setMissions);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortField, setSortField] = useState('createdAt');
     const [sortDir, setSortDir] = useState('desc');

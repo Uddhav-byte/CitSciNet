@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import useObservationStore from '../store/useObservationStore';
+import useMissionStore from '../store/useMissionStore';
 import { useGeofence } from '../hooks/useGeofence';
 import 'leaflet/dist/leaflet.css';
 
@@ -79,14 +80,23 @@ function formatTime(timestamp) {
     return date.toLocaleDateString();
 }
 
-export default function MapComponent({ missions = [], userLocation, onAcceptMission, children }) {
+export default function MapComponent({ missions = [], userLocation, children }) {
     const observations = useObservationStore((s) => s.observations);
-    const { isInZone, activeMission } = useGeofence(missions, userLocation);
+    const { isInZone, activeMission: geofenceMission } = useGeofence(missions, userLocation);
+    const activeMission = useMissionStore((s) => s.activeMission);
+    const setActiveMission = useMissionStore((s) => s.setActiveMission);
 
     const getMissionColor = (mission) => {
-        return activeMission && activeMission.id === mission.id
-            ? { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.3 }
-            : { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.3 };
+        const isActive = activeMission && activeMission.id === mission.id;
+        const isGeoActive = geofenceMission && geofenceMission.id === mission.id;
+
+        if (isActive) {
+            return { color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.4, weight: 4 };
+        }
+        if (isGeoActive) {
+            return { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.3, weight: 3 };
+        }
+        return { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.2, weight: 2 };
     };
 
     return (
@@ -118,6 +128,12 @@ export default function MapComponent({ missions = [], userLocation, onAcceptMiss
                             key={mission.id}
                             positions={positions}
                             pathOptions={colors}
+                            eventHandlers={{
+                                click: (e) => {
+                                    L.DomEvent.stopPropagation(e);
+                                    setActiveMission(mission);
+                                },
+                            }}
                         >
                             <Popup>
                                 <div className="min-w-[200px] rounded-xl bg-gray-900/95 p-3">
@@ -130,14 +146,15 @@ export default function MapComponent({ missions = [], userLocation, onAcceptMiss
                                             🎯 {mission.bountyPoints} pts
                                         </span>
                                     </div>
-                                    {onAcceptMission && (
-                                        <button
-                                            onClick={() => onAcceptMission(mission)}
-                                            className="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-3 py-1.5 text-xs font-bold text-white"
-                                        >
-                                            Accept Mission
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveMission(mission);
+                                        }}
+                                        className="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-3 py-1.5 text-xs font-bold text-white"
+                                    >
+                                        View Details →
+                                    </button>
                                 </div>
                             </Popup>
                         </Polygon>
@@ -223,7 +240,7 @@ export default function MapComponent({ missions = [], userLocation, onAcceptMiss
                 ))}
             </div>
 
-            {isInZone && activeMission && (
+            {isInZone && geofenceMission && (
                 <div className="absolute top-4 left-1/2 z-[1000] -translate-x-1/2 animate-pulse rounded-full bg-green-500/90 px-4 py-2 text-sm font-bold text-white shadow-lg">
                     🎯 You're in the Mission Zone!
                 </div>

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import useObservationStore from '../../../store/useObservationStore';
 import useAuthStore from '../../../store/authStore';
+import useMissionStore from '../../../store/useMissionStore';
 import UploadObservation from '../../../components/UploadObservation';
 import ObservationFeed from '../../../components/ObservationFeed';
 import MissionPanel from '../../../components/MissionPanel';
@@ -28,7 +29,8 @@ export default function CitizenDashboard() {
     const user = useAuthStore((s) => s.user);
     const setObservations = useObservationStore((s) => s.setObservations);
     const observations = useObservationStore((s) => s.observations);
-    const [missions, setMissions] = useState([]);
+    const missions = useMissionStore((s) => s.missions);
+    const setMissions = useMissionStore((s) => s.setMissions);
     const [userLocation, setUserLocation] = useState(null);
     const [showObservationPanel, setShowObservationPanel] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -64,7 +66,7 @@ export default function CitizenDashboard() {
 
     useEffect(() => {
         if (missionData) setMissions(missionData);
-    }, [missionData]);
+    }, [missionData, setMissions]);
 
     // Track user location
     useEffect(() => {
@@ -89,13 +91,6 @@ export default function CitizenDashboard() {
                 <MapComponent
                     missions={missions}
                     userLocation={userLocation}
-                    onAcceptMission={(mission) => {
-                        fetch(`${API_URL}/api/missions/${mission.id}/accept`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userName: user?.name || 'Anonymous' }),
-                        }).then(() => window.location.reload());
-                    }}
                 />
 
                 {/* ── Top-left: Map controls ── */}
@@ -205,8 +200,8 @@ export default function CitizenDashboard() {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-[11px] font-medium transition-colors ${activeTab === tab.id
-                                    ? 'border-b-2 border-cyan-400 text-cyan-400'
-                                    : 'text-white/40 hover:text-white/60'
+                                ? 'border-b-2 border-cyan-400 text-cyan-400'
+                                : 'text-white/40 hover:text-white/60'
                                 }`}
                         >
                             <tab.icon className="h-3 w-3" />
@@ -220,9 +215,8 @@ export default function CitizenDashboard() {
                     {activeTab === 'feed' ? (
                         <ObservationFeed />
                     ) : (
-                        <MissionPanel
+                        <MissionListView
                             missions={missions}
-                            userLocation={userLocation}
                             userName={user?.name || 'Anonymous'}
                         />
                     )}
@@ -237,6 +231,56 @@ export default function CitizenDashboard() {
                     </div>
                 </div>
             </aside>
+
+            {/* ═══ Mission Detail Slide-in Panel (overlays everything) ═══ */}
+            <MissionPanel userName={user?.name || 'Anonymous'} />
+        </div>
+    );
+}
+
+// Simple mission list for the sidebar tab
+function MissionListView({ missions, userName }) {
+    const setActiveMission = useMissionStore((s) => s.setActiveMission);
+
+    return (
+        <div className="space-y-3">
+            {missions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                    <Target className="h-12 w-12 mb-2" />
+                    <p className="text-sm">No active missions</p>
+                </div>
+            ) : (
+                missions.map((mission) => {
+                    const isAccepted = mission.userMissions?.some(
+                        (um) => um.userName === userName
+                    );
+
+                    return (
+                        <button
+                            key={mission.id}
+                            onClick={() => setActiveMission(mission)}
+                            className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-left transition-colors hover:bg-white/10"
+                        >
+                            <div className="mb-2 flex items-start justify-between">
+                                <h4 className="text-sm font-bold text-white">{mission.title}</h4>
+                                <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs font-semibold text-yellow-400">
+                                    🎯 {mission.bountyPoints}
+                                </span>
+                            </div>
+                            {mission.description && (
+                                <p className="mb-2 text-xs text-white/50 line-clamp-2">
+                                    {mission.description}
+                                </p>
+                            )}
+                            {isAccepted && (
+                                <span className="inline-flex items-center gap-1 rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
+                                    ✅ Accepted
+                                </span>
+                            )}
+                        </button>
+                    );
+                })
+            )}
         </div>
     );
 }

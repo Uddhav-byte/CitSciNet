@@ -1,35 +1,35 @@
 {
-    "name": "client",
-    "version": "0.1.0",
-    "private": true,
-    "scripts": {
-        "dev": "next dev",
-        "build": "next build",
-        "start": "next start",
-        "lint": "eslint"
-    },
-    "dependencies": {
-        "@tanstack/react-query": "^5.62.0",
-        "@tensorflow-models/coco-ssd": "^2.2.3",
-        "@tensorflow-models/mobilenet": "^2.1.1",
-        "@tensorflow/tfjs": "^4.22.0",
-        "@turf/boolean-point-in-polygon": "^7.2.0",
-        "@turf/turf": "^7.2.0",
-        "leaflet": "^1.9.4",
-        "leaflet-draw": "^1.0.4",
-        "lucide-react": "^0.468.0",
-        "next": "16.1.6",
-        "react": "19.2.3",
-        "react-dom": "19.2.3",
-        "react-leaflet": "^5.0.0",
-        "react-leaflet-draw": "^0.20.4",
-        "socket.io-client": "^4.8.3",
-        "zustand": "^5.0.3"
-    },
-    "devDependencies": {
-        "@tailwindcss/postcss": "^4",
-        "eslint": "^9",
-        "eslint-config-next": "16.1.6",
-        "tailwindcss": "^4"
-    }
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow-models/mobilenet": "^2.1.1",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@turf/boolean-point-in-polygon": "^7.2.0",
+    "@turf/turf": "^7.2.0",
+    "leaflet": "^1.9.4",
+    "leaflet-draw": "^1.0.4",
+    "lucide-react": "^0.468.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-leaflet": "^5.0.0",
+    "react-leaflet-draw": "^0.21.0",
+    "socket.io-client": "^4.8.3",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4"
+  }
 }

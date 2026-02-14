@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { FeatureGroup } from 'react-leaflet';
 import { EditControl } from 'react-leaflet-draw';
 import { Target, X } from 'lucide-react';
+import useMissionStore from '../store/useMissionStore';
+import Toast from './Toast';
 import 'leaflet-draw/dist/leaflet.draw.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -15,7 +17,9 @@ export default function MissionCreator({ onMissionCreated }) {
     const [description, setDescription] = useState('');
     const [bountyPoints, setBountyPoints] = useState(10);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showToast, setShowToast] = useState(false);
     const featureGroupRef = useRef(null);
+    const addMission = useMissionStore((s) => s.addMission);
 
     const handleCreated = useCallback((e) => {
         const { layer } = e;
@@ -59,6 +63,12 @@ export default function MissionCreator({ onMissionCreated }) {
             if (featureGroupRef.current && missionData.layer) {
                 featureGroupRef.current.removeLayer(missionData.layer);
             }
+
+            // Add to global store
+            addMission(mission);
+
+            // Show toast
+            setShowToast(true);
 
             onMissionCreated?.(mission);
         } catch (err) {
@@ -108,6 +118,12 @@ export default function MissionCreator({ onMissionCreated }) {
                     }}
                 />
             </FeatureGroup>
+
+            <Toast
+                message="Mission Published! 🚀"
+                show={showToast}
+                onClose={() => setShowToast(false)}
+            />
 
             {showModal && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
